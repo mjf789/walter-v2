@@ -1,0 +1,4 @@
+echo "streamlit
+llama-index
+python-dotenv
+openai" > requirements.txt
