@@ -1,11 +1,11 @@
 # app.py
 """
 Streamlit UI for Psychology Research Assistant
-All RAG logic is in rag_model.py
+All RAG logic is in walter_v2.py
 """
 
 import streamlit as st
-from rag_model import PsychologyRAG
+from walter_v2 import PsychologyRAG
 
 # Page config
 st.set_page_config(
