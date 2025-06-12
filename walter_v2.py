@@ -1,4 +1,4 @@
-# rag_model.py
+# walter_v2.py
 """
 Core RAG model logic - handles all LlamaIndex operations
 """
@@ -143,15 +143,19 @@ def quick_query(question: str, rag_model: Optional[PsychologyRAG] = None) -> str
 # Example usage (for testing)
 if __name__ == "__main__":
     # Test the model independently
-    print("Testing RAG model...")
-    
-    rag = PsychologyRAG()
-    rag.load_or_create_index()
-    
-    # Test query
-    response = quick_query("What are the main topics in these papers?", rag)
-    print(f"\nResponse: {response[:200]}...")
-    
-    # Show stats
-    stats = rag.get_index_stats()
-    print(f"\nIndex stats: {stats}")
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        print("Testing RAG model...")
+        
+        rag = PsychologyRAG()
+        rag.load_or_create_index()
+        
+        # Test query
+        response = quick_query("What are the main topics in these papers?", rag)
+        print(f"\nResponse: {response[:200]}...")
+        
+        # Show stats
+        stats = rag.get_index_stats()
+        print(f"\nIndex stats: {stats}")
+    else:
+        print("Run with 'python walter_v2.py test' to test the model")
