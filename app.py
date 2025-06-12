@@ -138,20 +138,3 @@ def quick_query(question: str, rag_model: Optional[PsychologyRAG] = None) -> str
         return full_response
     else:
         return str(response)
-
-
-# Example usage (for testing)
-if __name__ == "__main__":
-    # Test the model independently
-    print("Testing RAG model...")
-    
-    rag = PsychologyRAG()
-    rag.load_or_create_index()
-    
-    # Test query
-    response = quick_query("What are the main topics in these papers?", rag)
-    print(f"\nResponse: {response[:200]}...")
-    
-    # Show stats
-    stats = rag.get_index_stats()
-    print(f"\nIndex stats: {stats}")
