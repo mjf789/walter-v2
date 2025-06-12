@@ -69,7 +69,7 @@ with st.sidebar:
 def load_index():
     """Load index from storage or create new one"""
     PERSIST_DIR = "./storage"
-    DATA_DIR = "./data"
+    DATA_DIR = "./psych_pdfs"
     
     # Check if we have a persisted index
     if os.path.exists(PERSIST_DIR):
