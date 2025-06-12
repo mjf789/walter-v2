@@ -1,140 +1,177 @@
-# walter_v2.py
+# app.py
 """
-Core RAG model logic - handles all LlamaIndex operations
+Streamlit UI for Psychology Research Assistant
+All RAG logic is in rag_model.py
 """
 
-from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext, load_index_from_storage
-from llama_index.llms.openai import OpenAI
-from dotenv import load_dotenv
-import os
-from typing import Optional, Dict, Any
+import streamlit as st
+from rag_model import PsychologyRAG
 
-# Load environment variables
-load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+# Page config
+st.set_page_config(
+    page_title="Psychology Research Assistant",
+    page_icon="🧠",
+    layout="centered"
+)
 
+# Title
+st.title("🧠 Psychology Research Assistant")
+st.markdown("Ask questions about your research papers!")
 
-class PsychologyRAG:
-    """Main RAG model for psychology research papers"""
+# Initialize session state
+if 'rag_model' not in st.session_state:
+    st.session_state.rag_model = None
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+
+# Sidebar for settings
+with st.sidebar:
+    st.header("Settings")
     
-    def __init__(self, persist_dir: str = "./storage", data_dir: str = "./psych_pdfs"):
-        self.persist_dir = persist_dir
-        self.data_dir = data_dir
-        self.index = None
-        
-    def load_or_create_index(self) -> Optional[VectorStoreIndex]:
-        """Load existing index or create new one"""
-        
-        # Check if we have a persisted index
-        if os.path.exists(self.persist_dir):
-            print("Loading existing index...")
-            storage_context = StorageContext.from_defaults(persist_dir=self.persist_dir)
-            self.index = load_index_from_storage(storage_context)
-            print("✅ Loaded existing index!")
-            return self.index
-        
-        # Create new index
-        if not os.path.exists(self.data_dir):
-            raise FileNotFoundError(f"Data directory '{self.data_dir}' not found!")
-        
-        files = os.listdir(self.data_dir)
-        if not files:
-            raise ValueError(f"No files found in '{self.data_dir}'!")
-        
-        print(f"Creating new index from {len(files)} files...")
-        
-        # The famous 5 lines!
-        documents = SimpleDirectoryReader(self.data_dir).load_data()
-        self.index = VectorStoreIndex.from_documents(
-            documents,
-            show_progress=True
-        )
-        
-        # Persist for next time
-        self.index.storage_context.persist(persist_dir=self.persist_dir)
-        print(f"✅ Created index from {len(documents)} documents!")
-        
-        return self.index
+    # Model selection
+    model_name = st.selectbox(
+        "Select Model",
+        ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"],
+        index=0
+    )
     
-    def query(self, 
-              question: str, 
-              model_name: str = "gpt-3.5-turbo",
-              temperature: float = 0.1,
-              top_k: int = 3,
-              streaming: bool = True) -> Dict[str, Any]:
-        """Query the index with a question"""
-        
-        if not self.index:
-            raise ValueError("Index not loaded! Call load_or_create_index() first.")
-        
-        # Configure LLM
-        llm = OpenAI(model=model_name, temperature=temperature)
-        
-        # Create query engine
-        query_engine = self.index.as_query_engine(
-            llm=llm,
-            similarity_top_k=top_k,
-            streaming=streaming
-        )
-        
-        # Execute query
-        response = query_engine.query(question)
-        
-        # Package response
-        result = {
-            "response": response,
-            "streaming": streaming and hasattr(response, 'response_gen')
-        }
-        
-        return result
+    # Number of retrieved chunks
+    top_k = st.slider(
+        "Number of source chunks to retrieve",
+        min_value=1,
+        max_value=10,
+        value=3
+    )
     
-    def rebuild_index(self) -> None:
-        """Force rebuild the index by deleting storage"""
-        import shutil
-        
-        if os.path.exists(self.persist_dir):
-            shutil.rmtree(self.persist_dir)
-            print("Deleted existing index")
-        
-        self.index = None
-        self.load_or_create_index()
+    # Temperature
+    temperature = st.slider(
+        "Temperature (0 = focused, 1 = creative)",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.1,
+        step=0.1
+    )
     
-    def get_index_stats(self) -> Dict[str, Any]:
-        """Get statistics about the index"""
-        if not self.index:
-            return {"loaded": False}
-        
-        stats = {
-            "loaded": True,
-            "document_count": len(self.index.docstore.docs) if hasattr(self.index, 'docstore') else "Unknown",
-            "persist_dir": self.persist_dir,
-            "data_dir": self.data_dir
-        }
-        
-        return stats
+    # Index management
+    st.header("Index Management")
+    
+    if st.button("🔄 Rebuild Index", help="Re-process all documents"):
+        if st.session_state.rag_model:
+            with st.spinner("Rebuilding index..."):
+                st.session_state.rag_model.rebuild_index()
+                st.success("Index rebuilt!")
+                st.rerun()
+    
+    # Show index status
+    if st.session_state.rag_model:
+        stats = st.session_state.rag_model.get_index_stats()
+        if stats["loaded"]:
+            st.success("✅ Index loaded")
+            with st.expander("Index Details"):
+                st.json(stats)
+        else:
+            st.info("📚 Index not loaded yet")
 
+# Load RAG model
+@st.cache_resource(show_spinner=False)
+def initialize_rag_model():
+    """Initialize the RAG model (cached across sessions)"""
+    try:
+        with st.spinner("Initializing RAG model..."):
+            rag = PsychologyRAG()
+            rag.load_or_create_index()
+            return rag
+    except Exception as e:
+        st.error(f"Error initializing model: {str(e)}")
+        return None
 
-# Convenience functions for simple usage
-def create_rag_model(persist_dir: str = "./storage", data_dir: str = "./psych_pdfs") -> PsychologyRAG:
-    """Create and initialize a RAG model"""
-    rag = PsychologyRAG(persist_dir, data_dir)
-    rag.load_or_create_index()
-    return rag
+# Initialize model if not already done
+if st.session_state.rag_model is None:
+    st.session_state.rag_model = initialize_rag_model()
 
-
-def quick_query(question: str, rag_model: Optional[PsychologyRAG] = None) -> str:
-    """Quick query function for testing"""
-    if not rag_model:
-        rag_model = create_rag_model()
+# Chat interface
+if st.session_state.rag_model and st.session_state.rag_model.index:
+    # Display chat history
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            
+            # Show sources if available
+            if message["role"] == "assistant" and "sources" in message:
+                with st.expander("📚 Sources"):
+                    for i, source in enumerate(message["sources"]):
+                        st.markdown(f"**Source {i+1}** (Score: {source['score']:.3f})")
+                        st.text(source['text'][:500] + "...")
+                        if source.get('metadata'):
+                            st.json(source['metadata'])
+                        st.divider()
     
-    result = rag_model.query(question)
-    response = result["response"]
+    # Chat input
+    if prompt := st.chat_input("Ask about your documents..."):
+        # Add user message to chat
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.write(prompt)
+        
+        # Get response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    # Query the model
+                    result = st.session_state.rag_model.query(
+                        question=prompt,
+                        model_name=model_name,
+                        temperature=temperature,
+                        top_k=top_k,
+                        streaming=True
+                    )
+                    
+                    response = result["response"]
+                    
+                    # Handle streaming
+                    response_placeholder = st.empty()
+                    full_response = ""
+                    
+                    if result["streaming"] and hasattr(response, 'response_gen'):
+                        # Streaming response
+                        for text in response.response_gen:
+                            full_response += text
+                            response_placeholder.markdown(full_response + "▌")
+                        response_placeholder.markdown(full_response)
+                    else:
+                        # Non-streaming response
+                        full_response = str(response)
+                        response_placeholder.markdown(full_response)
+                    
+                    # Prepare sources for storage
+                    sources = []
+                    if hasattr(response, 'source_nodes') and response.source_nodes:
+                        for node in response.source_nodes:
+                            sources.append({
+                                'score': node.score,
+                                'text': node.text,
+                                'metadata': node.metadata if hasattr(node, 'metadata') else None
+                            })
+                    
+                    # Add assistant message to chat with sources
+                    st.session_state.chat_history.append({
+                        "role": "assistant", 
+                        "content": full_response,
+                        "sources": sources
+                    })
+                    
+                except Exception as e:
+                    st.error(f"Error during query: {str(e)}")
+
+else:
+    # Instructions if no model/index
+    st.info("""
+    👋 Welcome! To get started:
     
-    if result["streaming"] and hasattr(response, 'response_gen'):
-        # Collect streaming response
-        full_response = ""
-        for text in response.response_gen:
-            full_response += text
-        return full_response
-    else:
-        return str(response)
+    1. Make sure you have a `psych_pdfs` folder with PDF files
+    2. Click the button below to initialize the system
+    """)
+    
+    if st.button("🚀 Initialize System"):
+        st.session_state.rag_model = None
+        st.rerun()
